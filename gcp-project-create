@@ -1,0 +1,42 @@
+#!/bin/bash
+#
+# File: gcp-project-create
+#
+# Purpose: create a GCP project
+#
+# Environment:
+#
+#  GCP_BILLING_ACCOUNT - Numeric identifier for the GCP billing account to associate with this project
+#  GCP_IAM_FOLDER      - Numeric identifier for the folder in which this project will be placed
+#
+
+gcloud projects  create "$1" --name="$1"  --folder="$GCP_IAM_FOLDER" --enable-cloud-apis
+
+
+gcloud billing projects link "$1"  --billing-account="$GCP_BILLING_ACCOUNT"
+
+cat <<EOL > .envrc
+#
+# File: 
+#
+# Purpose: creates a local direnv file with local GCP cloud defaults 
+#
+# Reference: https://direnv.net/
+#
+
+export CLOUDSDK_CORE_PROJECT="$1"
+export CLOUDSDK_COMPUTE_REGION=us-west1
+export CLOUDSDK_COMPUTE_ZONE=us-west1-b
+EOL
+
+direnv allow
+
+
+# Turn on GCP services
+echo "Turning on Compute Engine API"
+gcloud services enable compute.googleapis.com --project "$1"
+echo "Turning on Logging API"
+gcloud services enable logging.googleapis.com --project "$1"
+echo "Turning on Storage API"
+gcloud services enable storage.googleapis.com --project "$1"
+

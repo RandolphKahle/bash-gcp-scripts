@@ -1,0 +1,14 @@
+#!/bin/bash
+#
+# File: gcp-project-clean
+#
+# Purpose: clear the default setup in a new GCP project
+#
+
+gcloud compute firewall-rules delete default-allow-icmp     -q
+gcloud compute firewall-rules delete default-allow-internal -q
+gcloud compute firewall-rules delete default-allow-rdp      -q
+gcloud compute firewall-rules delete default-allow-ssh      -q
+
+gcloud compute networks delete default -q
+

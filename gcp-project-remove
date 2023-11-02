@@ -1,0 +1,11 @@
+#!/bin/bash
+#
+# File: gcp-project-remove
+#
+# Purpose: schedules the project defined in the current directory for removal
+#
+
+
+gcloud projects  delete $CLOUDSDK_CORE_PROJECT -q
+
+rm .envrc
