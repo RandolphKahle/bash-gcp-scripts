@@ -1,0 +1,118 @@
+#!/bin/zsh
+#
+# File: gcp-project-terraform-setup
+#
+# Purpose: create a GCP project
+#
+# Environment:
+#
+#  GCP_BILLING_ACCOUNT   - Numeric identifier for the GCP billing account to associate with this project
+#  GCP_IAM_FOLDER        - Numeric identifier for the folder in which this project will be placed
+#  CLOUDSDK_CORE_PROJECT - Identifier for the current project
+
+
+
+
+
+main() {
+
+if does_service_account_exist "$CLOUDSDK_CORE_PROJECT" "$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com"; then
+echo "Create a service account for Terraform"
+gcloud iam service-accounts create terraform \
+    --description="Service account for Terraform" \
+    --display-name="Terraform Admin"
+
+gcloud projects add-iam-policy-binding $CLOUDSDK_CORE_PROJECT \
+    --member="serviceAccount:terraform@$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com" \
+    --role="roles/editor"
+fi
+
+
+if [[ ! -f "terraform-service-account-key.json" ]]; then
+gcloud iam service-accounts keys create terraform-service-account-key.json \
+    --iam-account terraform@$CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com
+fi
+
+if [[ ! -f "main.tf" ]]; then
+  echo "The file main.tf does not exist"
+cat <<EOL > main.tf
+provider "google" {
+  credentials = file("terraform-service-account-key.json")
+  project     = "$CLOUDSDK_CORE_PROJECT"
+  region      = "us-west1"
+}
+
+resource "google_compute_network" "main" {
+  name                    = "main"
+  auto_create_subnetworks = false  # Set to false since we are creating custom subnets
+  description             = "Custom VPC for $CLOUDSDK_CORE_PROJECT"
+}
+
+resource "google_compute_subnetwork" "subnet-us-west1" {
+  name          = "subnet"
+  ip_cidr_range = "10.0.30.0/24"
+  region        = "us-west1"
+  network       = google_compute_network.main.self_link
+}
+
+
+resource "google_compute_firewall" "ssh_firewall_rule" {
+  name    = "allow-ssh"
+  network = google_compute_network.main.self_link
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+  source_ranges = ["0.0.0.0/0"]  # Caution: This allows SSH access from any IP. Narrow this down based on your needs.
+  target_tags   = ["ssh"]  # VM instances with this tag will be subject to this rule
+}
+
+
+resource "google_compute_instance" "vm-01" {
+  name         = "vm-01"
+  machine_type = "e2-medium"
+  zone         = "us-west1-b"
+  tags         = ["ssh"]
+  boot_disk {
+    initialize_params {
+      image = "centos-cloud/centos-7"
+    }
+  }
+  network_interface {
+    network    = google_compute_network.main.self_link
+    subnetwork = google_compute_subnetwork.subnet-us-west1.self_link
+    access_config {
+      // Ephemeral IP
+    }
+  }
+  scheduling {
+    automatic_restart           = false
+    instance_termination_action = "STOP"
+    on_host_maintenance         = "TERMINATE"
+    preemptible                 = true
+    provisioning_model          = "SPOT"
+  }
+
+}
+EOL
+else
+  echo "The file main.tf already exists"
+fi
+
+}
+
+
+# Function to check if the service account exists
+does_service_account_exist() {
+  local project_id="$CLOUDSDK_CORE_PROJECT"
+  local service_account_email="CLOUDSDK_CORE_PROJECT.iam.gserviceaccount.com"
+  # List service accounts in the project and check if the specific account is in the list
+  if gcloud iam service-accounts list --project "$project_id" | grep "$service_account_email" &> /dev/null; then
+    return 0  # Service account exists
+  else
+    return 1  # Service account does not exist
+  fi
+}
+
+
+main

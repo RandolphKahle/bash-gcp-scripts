@@ -10,10 +10,18 @@
 #  GCP_IAM_FOLDER      - Numeric identifier for the folder in which this project will be placed
 #
 
-gcloud projects  create "$1" --name="$1"  --folder="$GCP_IAM_FOLDER" --enable-cloud-apis
+main() {
 
+# Create project and attach billing
+if gcloud projects describe "$1" &>/dev/null; then
+	echo "Creating project $1"
+    gcloud projects  create "$1" --name="$1"  --folder="$GCP_IAM_FOLDER" --enable-cloud-apis
+    gcloud billing projects link "$1"  --billing-account="$GCP_BILLING_ACCOUNT"
+else
+	echo "Project $1 already exists"
+fi
 
-gcloud billing projects link "$1"  --billing-account="$GCP_BILLING_ACCOUNT"
+if [ ! -f ".envrc" ]; then
 
 cat <<EOL > .envrc
 #
@@ -30,13 +38,32 @@ export CLOUDSDK_COMPUTE_ZONE=us-west1-b
 EOL
 
 direnv allow
+fi
+
 
 
 # Turn on GCP services
-echo "Turning on Compute Engine API"
-gcloud services enable compute.googleapis.com --project "$1"
-echo "Turning on Logging API"
-gcloud services enable logging.googleapis.com --project "$1"
-echo "Turning on Storage API"
-gcloud services enable storage.googleapis.com --project "$1"
+if ! is_compute_engine_enabled "$1"; then
+    echo "Turning on Compute Engine API"
+    gcloud services enable compute.googleapis.com --project "$1"
+    echo "Turning on Logging API"
+    gcloud services enable logging.googleapis.com --project "$1"
+    echo "Turning on Storage API"
+    gcloud services enable storage.googleapis.com --project "$1"
+else
+	echo "Compute Engine, Logging, and Storage APIs are already turned on."
+fi
 
+}
+
+
+# Function to check if the Compute Engine API is enabled
+is_compute_engine_enabled() {
+  local project_id=$1
+  # List enabled services and check if the Compute Engine API is among them
+  if gcloud services list --enabled --project "$project_id" | grep 'compute.googleapis.com' &> /dev/null; then
+    return 0  # API is enabled
+  else
+    return 1  # API is not enabled
+  fi
+}
