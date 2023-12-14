@@ -4,24 +4,44 @@
 #
 # Purpose: create a GCP project
 #
+# Use:
+#  gcp-project-create <project-name>
+#
+# Discussion:
+#   This script will create a GCP project for use within Randolph Kahle's DoiT 
+#   account structure. Pass the name of the project and the following will be created:
+#     ^ GCP project within Randolph Kahle's IAM folder and linked to Pod 4 billing account
+#     ^ A local '.envrc' file which contains environment variables for this project
+#     ^ Activattion of the following GCP APIs:
+#       * Compute API
+#       * Logging API
+#       * Storage API
+#
 # Environment:
 #
 #  GCP_BILLING_ACCOUNT - Numeric identifier for the GCP billing account to associate with this project
 #  GCP_IAM_FOLDER      - Numeric identifier for the folder in which this project will be placed
 #
 
-main() {
 
-# Create project and attach billing
-if gcloud projects describe "$1" &>/dev/null; then
-	echo "Creating project $1"
-    gcloud projects  create "$1" --name="$1"  --folder="$GCP_IAM_FOLDER" --enable-cloud-apis
-    gcloud billing projects link "$1"  --billing-account="$GCP_BILLING_ACCOUNT"
-else
-	echo "Project $1 already exists"
-fi
 
-if [ ! -f ".envrc" ]; then
+# Function to check if the Compute Engine API is enabled
+is_compute_engine_enabled() {
+  local project_id=$1
+  # List enabled services and check if the Compute Engine API is among them
+  if gcloud services list --enabled --project "$project_id" | grep 'compute.googleapis.com' &> /dev/null; then
+    return 0  # API is enabled
+  else
+    return 1  # API is not enabled
+  fi
+}
+
+
+
+echo "Creating project $1"
+gcloud projects  create "$1" --name="$1"  --folder="$GCP_IAM_FOLDER" --enable-cloud-apis
+gcloud billing projects link "$1"  --billing-account="$GCP_BILLING_ACCOUNT"
+
 
 cat <<EOL > .envrc
 #
@@ -38,32 +58,16 @@ export CLOUDSDK_COMPUTE_ZONE=us-west1-b
 EOL
 
 direnv allow
-fi
 
 
 
-# Turn on GCP services
-if ! is_compute_engine_enabled "$1"; then
-    echo "Turning on Compute Engine API"
-    gcloud services enable compute.googleapis.com --project "$1"
-    echo "Turning on Logging API"
-    gcloud services enable logging.googleapis.com --project "$1"
-    echo "Turning on Storage API"
-    gcloud services enable storage.googleapis.com --project "$1"
-else
-	echo "Compute Engine, Logging, and Storage APIs are already turned on."
-fi
+echo "Turning on Compute Engine API"
+gcloud services enable compute.googleapis.com          --project "$1"
+echo "Turning on Logging API"
+gcloud services enable logging.googleapis.com          --project "$1"
+echo "Turning on Storage API"
+gcloud services enable storage.googleapis.com          --project "$1"
+echot "Turning on the Artifact Registry API"
+gcloud services enable artifactregistry.googleapis.com --project "$1"
 
-}
-
-
-# Function to check if the Compute Engine API is enabled
-is_compute_engine_enabled() {
-  local project_id=$1
-  # List enabled services and check if the Compute Engine API is among them
-  if gcloud services list --enabled --project "$project_id" | grep 'compute.googleapis.com' &> /dev/null; then
-    return 0  # API is enabled
-  else
-    return 1  # API is not enabled
-  fi
-}
+  
